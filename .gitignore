@@ -6,8 +6,12 @@ __pycache__/
 .venv/
 .runtime/
 data/sources/
+data/raw/
+data/processed/
 state/
 benchmark/results/
 traces/
+vendor/
 *.sqlite
 *.db
+*.egg-info/

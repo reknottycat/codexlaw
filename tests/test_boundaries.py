@@ -1,5 +1,6 @@
 import json
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from codelaw.citations import CitationVerifier
@@ -8,7 +9,7 @@ from codelaw.evidence import Evidence, EvidenceLedger
 from codelaw.evaluator import evaluate
 from codelaw.live import NvidiaChatClient
 from codelaw.metrics import Metrics
-from codelaw.nvidia import NvidiaEmbeddingClient
+from codelaw.nvidia import NvidiaEmbeddingClient, embedding_client
 
 
 class CitationVerifierTest(unittest.TestCase):
@@ -102,6 +103,21 @@ class NvidiaClientTest(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
         self.assertEqual(json.loads(request.data), {"model": "embed-model", "input": ["first", "second"], "encoding_format": "float"})
 
+    def test_private_embedding_endpoint_can_be_anonymous(self):
+        response = _Response({"data": [{"index": 0, "embedding": [1.0]}]})
+        client = NvidiaEmbeddingClient(base_url="http://dgx.test/v1", api_key=None, model="embed-model", require_api_key=False)
+        with patch("codelaw.nvidia.urlopen", return_value=response) as open_url:
+            self.assertEqual(client.embed(["text"]), [[1.0]])
+        request = open_url.call_args.args[0]
+        self.assertIsNone(request.get_header("Authorization"))
+
+    def test_embedding_client_uses_dgx_defaults_without_a_secret(self):
+        settings = load_settings({})
+        client = embedding_client(settings)
+        self.assertEqual(client.base_url, "http://192.168.1.6:8002/v1")
+        self.assertEqual(client.model, "nvidia/Nemotron-3-Embed-1B-BF16")
+        self.assertFalse(client.require_api_key)
+
     def test_chat_client_rejects_missing_key_before_network_request(self):
         settings = load_settings({"LEGALBENCH_LIVE_CONFIRM": "true"})
         with patch("codelaw.live.urlopen") as open_url:
@@ -115,6 +131,7 @@ class NvidiaClientTest(unittest.TestCase):
             "NVIDIA_BASE_URL": "https://nvidia.test/v1/",
             "NVIDIA_CHAT_MODEL": "chat-model",
             "LIVE_LEGALBENCH_MAX_TOKENS": "256",
+            "NVIDIA_STREAM": "false",
             "LEGALBENCH_LIVE_CONFIRM": "true",
         })
         response = _Response({"choices": [{"message": {"content": "ok"}}]})
@@ -126,10 +143,78 @@ class NvidiaClientTest(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
         self.assertEqual(json.loads(request.data), {
             "model": "chat-model",
-            "temperature": 0,
+            "temperature": 1,
             "max_tokens": 256,
+            "seed": 0,
+            "stream": False,
+            "reasoning_effort": "max",
             "messages": [{"role": "user", "content": "hello"}],
         })
+
+    def test_chat_client_collects_streamed_answer_content(self):
+        class StreamResponse(_Response):
+            def __init__(self):
+                self.lines = iter([
+                    b'data: {"choices":[{"delta":{"reasoning_content":"hidden"}}]}\n',
+                    b'data: {"choices":[{"delta":{"content":"first"}}]}\n',
+                    b'data: {"choices":[{"delta":{"content":" second"}}]}\n',
+                    b'data: [DONE]\n',
+                ])
+
+            def readline(self):
+                return next(self.lines, b"")
+
+        settings = load_settings({
+            "NVIDIA_API_KEY": "test-key",
+            "NVIDIA_BASE_URL": "https://nvidia.test/v1/",
+            "LEGALBENCH_LIVE_CONFIRM": "true",
+        })
+        with patch("codelaw.live.urlopen", return_value=StreamResponse()):
+            self.assertEqual(NvidiaChatClient(settings).ask("hello"), "first second")
+
+    def test_chat_client_does_not_retry_non_transient_http_errors(self):
+        settings = load_settings({
+            "NVIDIA_API_KEY": "test-key",
+            "LEGALBENCH_LIVE_CONFIRM": "true",
+            "NVIDIA_RETRIES": "2",
+        })
+        error = HTTPError("https://nvidia.test/v1/chat/completions", 400, "bad request", {}, None)
+        with patch("codelaw.live.urlopen", side_effect=error) as open_url:
+            with self.assertRaises(HTTPError):
+                NvidiaChatClient(settings).ask("hello")
+        self.assertEqual(open_url.call_count, 1)
+
+    def test_chat_client_polls_an_accepted_request(self):
+        class PendingResponse(_Response):
+            status = 202
+
+        class CompletedResponse(_Response):
+            status = 200
+
+        settings = load_settings({
+            "NVIDIA_API_KEY": "test-key",
+            "LEGALBENCH_LIVE_CONFIRM": "true",
+            "NVIDIA_STREAM": "false",
+        })
+        with patch("codelaw.live.urlopen", side_effect=[
+            PendingResponse({"requestId": "request-1"}),
+            CompletedResponse({"choices": [{"message": {"content": "done"}}]}),
+        ]) as open_url:
+            self.assertEqual(NvidiaChatClient(settings).ask("hello"), "done")
+        self.assertEqual(open_url.call_count, 2)
+        self.assertEqual(open_url.call_args_list[1].args[0].full_url, "https://integrate.api.nvidia.com/v1/status/request-1")
+
+    def test_chat_client_retries_two_transient_timeouts_when_configured(self):
+        settings = load_settings({
+            "NVIDIA_API_KEY": "test-key",
+            "LEGALBENCH_LIVE_CONFIRM": "true",
+            "NVIDIA_STREAM": "false",
+            "NVIDIA_RETRIES": "2",
+        })
+        with patch("codelaw.live.urlopen", side_effect=[TimeoutError(), TimeoutError(), _Response({"choices": [{"message": {"content": "done"}}]})]) as open_url, patch("codelaw.live.time.sleep") as sleep:
+            self.assertEqual(NvidiaChatClient(settings).ask("hello"), "done")
+        self.assertEqual(open_url.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
 
 
 if __name__ == "__main__":

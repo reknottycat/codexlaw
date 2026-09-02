@@ -1,49 +1,23 @@
 # CodexLaw
 
-A reproducible Legal Agent Harness A/B project.
+可重复的法律 Agent A/B 测试底座：Architecture A 使用 Lawgent 条款抽取，Architecture B 使用 CodexLaw 外置 workflow、evidence ledger 和 citation verifier。两边读取同一份真实案例、证据和 K3 配置。
 
-## Goal
+当前已具备：
 
-Compare:
+- 公开 LegalBench、LegalBench-RAG、CaseHOLD 数据下载与统一 JSONL；
+- 官方 eCFR Title 16/17 XML 的原文、日期、URL、SHA-256 记录；
+- Neo4j authority 导入、唯一约束和来源哈希校验；
+- DGX Spark `nvidia/Nemotron-3-Embed-1B-BF16` 的真实 embedding 索引；
+- 串行 NVIDIA Kimi K3 A/B runner，以及独立答案、引用和 workflow 判分。
 
-- **Architecture A — Lawgent Native**
-- **Architecture B — Codex Core + Legal Domain Pack**
+安全边界：API key 只从运行时环境读取，绝不提交；LegalBench 等评测数据不是法律权威；法律结论必须回到带 provenance 的原始法源。数据下载目录和 benchmark 结果均被 `.gitignore` 忽略，许可与来源见 [TESTING.md](TESTING.md) 及 [data/README.md](data/README.md)。
 
-The project will benchmark workflow control, retrieval, citation verification, recovery, context preservation, and evidence handling on the same lawful test data.
+先运行：
 
-## Recovery status
-
-This repository was initialized on 2026-09-01 after the earlier transient workspace was automatically removed. The previous custom harness and run artifacts are not being represented as recovered source. Reimplementation starts from this commit and every subsequent phase will be committed here.
-
-## Safety and data rules
-
-- API keys are read only from runtime environment variables and are never committed.
-- LegalBench is evaluation data, not legal authority.
-- Legal conclusions must remain grounded in primary legal sources and independently verified.
-- Official source material keeps provenance, version/effective-date metadata, and original text.
-- No commercial or access-restricted legal database is copied into this repository.
-
-## Planned layout
-
-```text
-architecture-a-lawgent/
-architecture-b-codex/
-shared/
-  retrieval/
-  verification/
-  evidence/
-benchmark/
-  datasets/
-  runner/
-  results/
-observability/
-scripts/
-docs/
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -q
+python scripts/check_config.py
 ```
 
-## First reproducibility target
-
-1. Rebuild the shared data and Neo4j pipeline.
-2. Rebuild the two harness adapters without dual agent runtimes.
-3. Add deterministic workflow and evidence-ledger tests.
-4. Run a small, strictly serial K3 quality gate only when an environment-provided API key and network access are available.
+真实数据准备、Neo4j、DGX embedding 和 A/B 命令见 [TESTING.md](TESTING.md)。

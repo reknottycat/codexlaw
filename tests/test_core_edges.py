@@ -2,7 +2,7 @@ import unittest
 
 from codelaw.config import SettingsError, load_settings
 from codelaw.ecfr import parse_title_xml
-from codelaw.retrieval import BM25Index, Document, HybridRetriever
+from codelaw.retrieval import BM25Index, DenseIndex, Document, HybridRetriever
 from codelaw.workflow import REQUIRED_NODES, WorkflowState
 
 
@@ -82,6 +82,35 @@ class RetrievalEdgeTest(unittest.TestCase):
 
         rows = HybridRetriever(BM25Index(documents), Graph()).retrieve("assignment")
         self.assertEqual([document.document_id for document in rows], ["assignment", "exception"])
+
+    def test_dense_index_ranks_by_cosine_similarity(self):
+        rows = DenseIndex(self.documents, [[1.0, 0.0], [0.0, 1.0]]).search([0.9, 0.1], limit=1)
+        self.assertEqual(rows[0][0].document_id, "assignment")
+
+    def test_dense_index_rejects_mismatched_vectors(self):
+        with self.assertRaisesRegex(ValueError, "equal length"):
+            DenseIndex(self.documents, [[1.0, 0.0]])
+
+    def test_hybrid_retriever_can_fuse_dense_and_lexical_results(self):
+        class Embedder:
+            def embed(self, texts):
+                return [[0.0, 1.0] for _ in texts]
+
+        class Graph:
+            def expand(self, document_ids):
+                return []
+
+        retriever = HybridRetriever(
+            BM25Index(self.documents),
+            Graph(),
+            dense=DenseIndex(self.documents, [[1.0, 0.0], [0.0, 1.0]]),
+            embedder=Embedder(),
+        )
+        self.assertEqual(retriever.retrieve("unmatched", limit=1)[0].document_id, "liability")
+
+    def test_hybrid_retriever_requires_embedder_for_dense_index(self):
+        with self.assertRaisesRegex(ValueError, "requires an embedder"):
+            HybridRetriever(BM25Index(self.documents), lambda: None, dense=DenseIndex(self.documents, [[1.0, 0.0], [0.0, 1.0]]))
 
 
 if __name__ == "__main__":

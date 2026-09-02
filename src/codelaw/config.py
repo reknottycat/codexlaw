@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import Mapping
@@ -20,6 +21,7 @@ class Settings:
     live_cases: int
     live_confirmed: bool
     nvidia_api_key: str | None
+    max_tokens: int = 20000
 
     def require_live_provider(self) -> None:
         if not self.live_confirmed:
@@ -39,10 +41,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     try:
         interval = float(values.get("LIVE_LEGALBENCH_INTERVAL_SECONDS", "30"))
         cases = int(values.get("LIVE_LEGALBENCH_CASES", "3"))
+        max_tokens = int(values.get("LIVE_LEGALBENCH_MAX_TOKENS", "20000"))
     except ValueError as exc:
-        raise SettingsError("LIVE_LEGALBENCH interval and case count must be numeric") from exc
-    if interval <= 0 or cases < 1:
+        raise SettingsError("LIVE_LEGALBENCH interval, case count, and token budget must be numeric") from exc
+    if not math.isfinite(interval) or interval <= 0 or cases < 1:
         raise SettingsError("LIVE_LEGALBENCH interval and case count must be positive")
+    if not 1 <= max_tokens <= 65536:
+        raise SettingsError("LIVE_LEGALBENCH_MAX_TOKENS must be between 1 and 65536")
     return Settings(
         nvidia_base_url=values.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/"),
         chat_model=values.get("NVIDIA_CHAT_MODEL", "moonshotai/kimi-k3"),
@@ -51,4 +56,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         live_cases=cases,
         live_confirmed=_bool(values.get("LEGALBENCH_LIVE_CONFIRM", "false")),
         nvidia_api_key=values.get("NVIDIA_API_KEY") or None,
+        max_tokens=max_tokens,
     )

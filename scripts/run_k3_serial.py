@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from urllib.error import URLError
 
 from codelaw.config import SettingsError, load_settings
 from codelaw.live import LiveTask, NvidiaChatClient, run_serial
@@ -23,6 +24,12 @@ def main() -> int:
     except SettingsError as exc:
         print(f"live_gate=blocked: {exc}")
         return 2
+    except TimeoutError:
+        print("live_gate=failed: NVIDIA K3 request timed out before a response was received; verify endpoint availability and retry later")
+        return 1
+    except URLError as exc:
+        print(f"live_gate=failed: NVIDIA K3 request could not reach the provider ({exc.reason}); verify the endpoint and network, then retry")
+        return 1
     print(json.dumps(rows, ensure_ascii=False, indent=2))
     return 0
 

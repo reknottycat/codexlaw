@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections import Counter
 
 
+def _escape_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
 class Metrics:
     def __init__(self):
         self.values: Counter[tuple[str, tuple[tuple[str, str], ...]]] = Counter()
@@ -19,6 +23,6 @@ class Metrics:
     def render(self) -> str:
         lines = []
         for (name, labels), value in sorted(self.values.items()):
-            suffix = "{" + ",".join(f'{key}="{val}"' for key, val in labels) + "}" if labels else ""
+            suffix = "{" + ",".join(f'{key}="{_escape_label(val)}"' for key, val in labels) + "}" if labels else ""
             lines.append(f"{name}{suffix} {value}")
         return "\n".join(lines) + ("\n" if lines else "")

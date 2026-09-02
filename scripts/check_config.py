@@ -9,6 +9,7 @@ def main() -> int:
     print(f"chat_model={settings.chat_model}")
     print(f"embedding_model={settings.embedding_model}")
     print(f"serial_interval_seconds={settings.interval_seconds}")
+    print(f"max_tokens={settings.max_tokens}")
     try:
         settings.require_live_provider()
     except SettingsError as exc:

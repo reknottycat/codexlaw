@@ -22,9 +22,10 @@ class NvidiaChatClient:
         self.settings = settings
 
     def ask(self, prompt: str) -> str:
+        self.settings.require_live_provider()
         request = Request(
             f"{self.settings.nvidia_base_url}/chat/completions",
-            data=json.dumps({"model": self.settings.chat_model, "temperature": 0, "messages": [{"role": "user", "content": prompt}]}).encode(),
+            data=json.dumps({"model": self.settings.chat_model, "temperature": 0, "max_tokens": self.settings.max_tokens, "messages": [{"role": "user", "content": prompt}]}).encode(),
             headers={"Authorization": f"Bearer {self.settings.nvidia_api_key}", "Content-Type": "application/json"},
             method="POST",
         )

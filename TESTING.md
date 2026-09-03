@@ -76,6 +76,17 @@ Use a smaller `--limit` for a connectivity smoke test. A live run is intentional
 
 For a bounded comparative batch, keep the 65536-token default and make the retry envelope explicit: `NVIDIA_REQUEST_TIMEOUT_SECONDS=300` and `NVIDIA_RETRIES=1` mean at most two 300-second attempts per architecture/case. To apply a later evaluator improvement without sending another provider request, use `python scripts/rescore_ab_results.py benchmark/results/<run>.jsonl`; it only prints recomputed metrics and does not modify the original rows.
 
+## Project-to-project benchmark
+
+`run_project_ab_benchmark.py` compares the two independent projects, not the earlier internal CodexLaw A/B variants: Lawgent runs its native `WorkflowExecutor`; CodexLaw runs its Codex orchestration. Both receive the same selected case and closed-book evidence, use the same locally configured MiniMax-M3 model, and are scored by the same answer-and-evidence evaluator. Project-specific workflow-node counts are intentionally excluded from the common score.
+
+The Lawgent runner uses the ignored `.runtime/lawgent-venv/` environment and never modifies `vendor/lawgent/`. On this Windows host, its PDF-export import is disabled only in the text benchmark subprocess because the unavailable GTK/Pango DLLs are irrelevant to a JSON legal-answer evaluation.
+
+```powershell
+$env:PYTHONPATH = "src"
+python scripts/run_project_ab_benchmark.py --limit 3 --source legalbench-rag,legalbench,casehold --timeout 300
+```
+
 ## Live NVIDIA Kimi K3 gate
 
 The live gate uses NVIDIA's hosted OpenAI-compatible endpoint. It is strictly serial and requires both a runtime `NVIDIA_API_KEY` and explicit `LEGALBENCH_LIVE_CONFIRM=true`.

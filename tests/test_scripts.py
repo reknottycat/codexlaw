@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from codelaw.config import load_settings
 from scripts.check_config import main
-from scripts import rescore_ab_results, run_k3_serial
+from scripts import rescore_ab_results, run_k3_serial, run_project_ab_benchmark
 
 
 class CheckConfigScriptTest(unittest.TestCase):
@@ -59,6 +59,16 @@ class RescoreABResultsScriptTest(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(path.read_text(encoding="utf-8"), source + "\n")
         self.assertIn('"success_rate": 1.0', output.getvalue())
+
+
+class ProjectBenchmarkScriptTest(unittest.TestCase):
+    def test_reports_project_quality_and_availability_separately(self):
+        metrics = run_project_ab_benchmark._metrics([
+            {"project": "CodexLaw", "provider_error": None, "answer_correct": True, "citation_valid": True, "common_success": True},
+            {"project": "Lawgent", "provider_error": "timeout", "answer_correct": False, "citation_valid": False, "common_success": False},
+        ])
+        self.assertEqual(metrics["projects"]["CodexLaw"]["common_success_rate"], 1.0)
+        self.assertEqual(metrics["projects"]["Lawgent"]["execution_completion_rate"], 0.0)
 
     def test_reports_provider_http_error_without_traceback(self):
         settings = load_settings({"NVIDIA_API_KEY": "test-key", "LEGALBENCH_LIVE_CONFIRM": "true"})

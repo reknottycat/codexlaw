@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from codelaw.config import load_settings
 from scripts.check_config import main
-from scripts import rescore_ab_results, run_k3_serial, run_lawgent_minimax, run_project_ab_benchmark
+from scripts import prepare_offline_rag_cases, rescore_ab_results, run_k3_serial, run_lawgent_minimax, run_project_ab_benchmark
 
 
 class CheckConfigScriptTest(unittest.TestCase):
@@ -63,6 +63,14 @@ class RescoreABResultsScriptTest(unittest.TestCase):
 
 
 class ProjectBenchmarkScriptTest(unittest.TestCase):
+    def test_offline_rag_evidence_keeps_original_evidence_after_retrieval_hits(self):
+        case = {"jurisdiction": "US", "evidence": [{"evidence_id": "original", "text": "Original"}]}
+        hits = [{"document_id": "ecfr:16:1.1:chunk:0", "text": "Retrieved authority", "score": 0.9, "metadata": {"authority_id": "ecfr:16:1.1", "citation": "16 CFR §1.1", "issue_date": "2026-08-31"}}]
+        retrieved = prepare_offline_rag_cases._retrieval_evidence(case, hits, max_chars=100)
+        self.assertEqual(retrieved[0]["evidence_id"], "retrieval:ecfr:16:1.1:chunk:0")
+        self.assertEqual(retrieved[0]["effective_on"], "2026-08-31")
+        self.assertEqual(case["evidence"][0]["evidence_id"], "original")
+
     def test_lawgent_specialist_provider_override_restores_native_factory(self):
         marker = object()
         module_name = "test_lawgent_workflow_factory"

@@ -89,6 +89,21 @@ python scripts/run_project_ab_benchmark.py --limit 60 --source legalbench-rag,le
 
 The documented baseline uses `--limit 60`: 20 deterministic cases from each source. The batch is source-balanced; larger batches should keep the same model, closed-book policy, answer-type output contract, evaluator, and timeout.
 
+### Offline vector-RAG variant
+
+For an offline retrieval comparison, first prepare a separate, ignored case stream. It obtains embeddings from the configured private DGX endpoint and searches the local embedding index; it does not fetch legal material from the Internet. Retrieval evidence is prepended to the existing benchmark evidence, so the evaluator can verify every cited evidence ID.
+
+```powershell
+$env:PYTHONPATH = "src"
+python scripts/prepare_offline_rag_cases.py `
+  --limit 60 --source legalbench-rag --source legalbench --source casehold `
+  --output benchmark/results/offline-rag-cases.jsonl
+python scripts/run_project_ab_benchmark.py `
+  --cases benchmark/results/offline-rag-cases.jsonl --limit 60 --timeout 300
+```
+
+This is a **vector-RAG** comparison, not a Neo4j graph-RAG claim. A Neo4j-dependent run requires the local Docker engine and Bolt service to be healthy before importing and querying the authority graph.
+
 ## Live NVIDIA Kimi K3 gate
 
 The live gate uses NVIDIA's hosted OpenAI-compatible endpoint. It is strictly serial and requires both a runtime `NVIDIA_API_KEY` and explicit `LEGALBENCH_LIVE_CONFIRM=true`.

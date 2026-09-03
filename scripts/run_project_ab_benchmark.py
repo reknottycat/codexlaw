@@ -36,9 +36,9 @@ def _project_row(case: dict[str, Any], *, project: str, response: str, error: st
     return row
 
 
-def _lawgent_response(case_id: str, *, timeout_seconds: float) -> tuple[str, str | None, float]:
+def _lawgent_response(case_id: str, *, cases_path: Path, timeout_seconds: float) -> tuple[str, str | None, float]:
     started = time.monotonic()
-    command = [str(PROJECT_ROOT / ".runtime" / "lawgent-venv" / "Scripts" / "python.exe"), "-u", str(PROJECT_ROOT / "scripts" / "run_lawgent_minimax.py"), "--case-id", case_id]
+    command = [str(PROJECT_ROOT / ".runtime" / "lawgent-venv" / "Scripts" / "python.exe"), "-u", str(PROJECT_ROOT / "scripts" / "run_lawgent_minimax.py"), "--cases", str(cases_path.resolve()), "--case-id", case_id]
     environment = dict(os.environ)
     environment["PYTHONUTF8"] = "1"
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -131,7 +131,7 @@ def main() -> int:
             output.flush()
             print(f"project_benchmark=row project=CodexLaw case={case['case_id']} outcome={'ok' if codex_row['common_success'] else 'failed'}")
 
-            lawgent_raw, lawgent_error, lawgent_elapsed = _lawgent_response(str(case["case_id"]), timeout_seconds=args.timeout)
+            lawgent_raw, lawgent_error, lawgent_elapsed = _lawgent_response(str(case["case_id"]), cases_path=args.cases, timeout_seconds=args.timeout)
             lawgent_row = _project_row(case, project="Lawgent", response=_normalise_lawgent_response(case, lawgent_raw), error=lawgent_error, elapsed_seconds=lawgent_elapsed)
             rows.append(lawgent_row)
             output.write(json.dumps(lawgent_row, ensure_ascii=False) + "\n")

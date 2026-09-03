@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -16,7 +17,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from codelaw.benchmark import build_prompt, run_case, select_cases  # noqa: E402
+from codelaw.benchmark import build_prompt, parse_decision, run_case, select_cases  # noqa: E402
 from codelaw.minimax import MiniMaxChatClient, MiniMaxRuntime  # noqa: E402
 
 
@@ -50,6 +51,34 @@ def _lawgent_response(case_id: str, *, timeout_seconds: float) -> tuple[str, str
     except (IndexError, json.JSONDecodeError):
         return "", f"Lawgent runner exited with status {completed.returncode} without a machine-readable result", time.monotonic() - started
     return str(payload.get("response", "")), payload.get("error") or (None if completed.returncode == 0 else f"Lawgent runner exited with status {completed.returncode}"), time.monotonic() - started
+
+
+def _normalise_lawgent_response(case: dict[str, Any], response: str) -> str:
+    """Extract Lawgent's explicit Markdown answer into the shared score schema."""
+    if parse_decision(response).answer:
+        return response
+    answer_match = re.search(
+        r"(?im)^\s*(?:[-*]\s*)?(?:\*{1,2})?(?:answer|答案)(?:\*{1,2})?\s*[:：]\s*(.+?)\s*$",
+        response,
+    )
+    if not answer_match:
+        return response
+    answer = answer_match.group(1).strip().strip("`* ")
+    if case.get("answer_type") == "multiple_choice":
+        choice_match = re.search(r"\b([a-eA-E]|[0-4])\b", answer)
+        if not choice_match:
+            return response
+        answer = choice_match.group(1).upper()
+    elif case.get("answer_type") == "classification":
+        answer = answer.split()[0].strip(".,:;`* ")
+    else:
+        answer = answer.split("\n", 1)[0].strip()
+    citation_ids = [
+        str(item["evidence_id"])
+        for item in case.get("evidence", [])
+        if str(item["evidence_id"]) in response
+    ]
+    return json.dumps({"answer": answer, "citation_ids": citation_ids, "confidence": None})
 
 
 def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -103,7 +132,7 @@ def main() -> int:
             print(f"project_benchmark=row project=CodexLaw case={case['case_id']} outcome={'ok' if codex_row['common_success'] else 'failed'}")
 
             lawgent_raw, lawgent_error, lawgent_elapsed = _lawgent_response(str(case["case_id"]), timeout_seconds=args.timeout)
-            lawgent_row = _project_row(case, project="Lawgent", response=lawgent_raw, error=lawgent_error, elapsed_seconds=lawgent_elapsed)
+            lawgent_row = _project_row(case, project="Lawgent", response=_normalise_lawgent_response(case, lawgent_raw), error=lawgent_error, elapsed_seconds=lawgent_elapsed)
             rows.append(lawgent_row)
             output.write(json.dumps(lawgent_row, ensure_ascii=False) + "\n")
             output.flush()

@@ -7,6 +7,7 @@ import json
 import sys
 import types
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -75,6 +76,18 @@ class MiniMaxLawgentProvider:
         yield self._stream_event("done", {"text": answer, "usage": {}})
 
 
+@contextmanager
+def _specialist_provider_override(executor_type: Any, provider: MiniMaxLawgentProvider) -> Iterator[None]:
+    """Keep Lawgent's native specialist workflow on the benchmark provider."""
+    workflow_module = sys.modules[executor_type.__module__]
+    original_build_provider = workflow_module.build_provider
+    workflow_module.build_provider = lambda *_args, **_kwargs: provider
+    try:
+        yield
+    finally:
+        workflow_module.build_provider = original_build_provider
+
+
 def _task(case: dict[str, Any]) -> str:
     evidence = "\n\n".join(
         f"[{item['evidence_id']}]\n{item['text']}" for item in case.get("evidence", [])
@@ -137,12 +150,15 @@ def main() -> int:
     event_kinds: list[str] = []
     with config.override_current_settings(settings):
         executor = executor_type(settings=settings, provider=provider)
-        for event in executor.stream(_task(case)):
-            event_kinds.append(event.kind)
-            if event.kind == "delta":
-                final_text += str(event.data.get("text", ""))
-            if event.kind == "error":
-                error = str(event.data.get("message", "Lawgent workflow failed"))
+        # Lawgent constructs providers inside its native specialist fan-out.
+        # Bind those calls to the same MiniMax adapter as the parent workflow.
+        with _specialist_provider_override(executor_type, provider):
+            for event in executor.stream(_task(case)):
+                event_kinds.append(event.kind)
+                if event.kind == "delta":
+                    final_text += str(event.data.get("text", ""))
+                if event.kind == "error":
+                    error = str(event.data.get("message", "Lawgent workflow failed"))
     print(json.dumps({"response": final_text, "error": error, "events": event_kinds}, ensure_ascii=False))
     return 0 if not error else 1
 

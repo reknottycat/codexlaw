@@ -61,6 +61,8 @@ class MiniMaxChatClient:
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             input=json.dumps(messages, ensure_ascii=False),
             timeout=self.runtime.timeout_seconds + 15,
             check=False,

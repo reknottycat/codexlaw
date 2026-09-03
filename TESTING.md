@@ -84,10 +84,10 @@ The Lawgent runner uses the ignored `.runtime/lawgent-venv/` environment and nev
 
 ```powershell
 $env:PYTHONPATH = "src"
-python scripts/run_project_ab_benchmark.py --limit 3 --source legalbench-rag,legalbench,casehold --timeout 300
+python scripts/run_project_ab_benchmark.py --limit 60 --source legalbench-rag,legalbench,casehold --timeout 300
 ```
 
-Use `--limit 12` for the documented four-cases-per-source baseline. The batch is deterministic and source-balanced; larger batches should keep the same model, closed-book policy, answer-type output contract, evaluator, and timeout.
+The documented baseline uses `--limit 60`: 20 deterministic cases from each source. The batch is source-balanced; larger batches should keep the same model, closed-book policy, answer-type output contract, evaluator, and timeout.
 
 ## Live NVIDIA Kimi K3 gate
 

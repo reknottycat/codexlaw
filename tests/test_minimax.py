@@ -22,6 +22,8 @@ class MiniMaxChatClientTest(unittest.TestCase):
         self.assertIn("--non-interactive", calls[0][0])
         self.assertIn("--messages-file", calls[0][0])
         self.assertEqual(json.loads(calls[0][1]["input"])[0]["content"], "system")
+        self.assertEqual(calls[0][1]["encoding"], "utf-8")
+        self.assertEqual(calls[0][1]["errors"], "replace")
 
     def test_reports_empty_and_failed_cli_responses(self):
         failed = MiniMaxChatClient(

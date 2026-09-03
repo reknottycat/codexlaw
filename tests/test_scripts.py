@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -62,6 +63,25 @@ class RescoreABResultsScriptTest(unittest.TestCase):
 
 
 class ProjectBenchmarkScriptTest(unittest.TestCase):
+    def test_lawgent_specialist_provider_override_restores_native_factory(self):
+        marker = object()
+        module_name = "test_lawgent_workflow_factory"
+        module = types.SimpleNamespace(build_provider=lambda: marker)
+        executor_type = type("Executor", (), {"__module__": module_name})
+        original_module = sys.modules.get(module_name)
+        sys.modules[module_name] = module
+        provider = object()
+        try:
+            with run_lawgent_minimax._specialist_provider_override(executor_type, provider):
+                self.assertIs(module.build_provider(), provider)
+                self.assertIs(module.build_provider(fast=True), provider)
+            self.assertIs(module.build_provider(), marker)
+        finally:
+            if original_module is None:
+                del sys.modules[module_name]
+            else:
+                sys.modules[module_name] = original_module
+
     def test_lawgent_task_uses_the_same_answer_type_contract(self):
         task = run_lawgent_minimax._task({
             "answer_type": "multiple_choice",
@@ -71,6 +91,19 @@ class ProjectBenchmarkScriptTest(unittest.TestCase):
         })
         self.assertIn("answer with only the zero-based option index or its letter", task)
         self.assertIn("[fixture:evidence]", task)
+
+    def test_normalises_lawgent_explicit_markdown_answer_without_a_model_call(self):
+        case = {
+            "answer_type": "multiple_choice",
+            "evidence": [{"evidence_id": "fixture:evidence", "text": "Evidence"}],
+        }
+        normalised = run_project_ab_benchmark._normalise_lawgent_response(
+            case,
+            "**Answer: E**\n\nReasoning from [fixture:evidence].",
+        )
+        payload = json.loads(normalised)
+        self.assertEqual(payload["answer"], "E")
+        self.assertEqual(payload["citation_ids"], ["fixture:evidence"])
 
     def test_reports_project_quality_and_availability_separately(self):
         metrics = run_project_ab_benchmark._metrics([

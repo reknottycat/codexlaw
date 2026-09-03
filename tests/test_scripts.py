@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from codelaw.config import load_settings
 from scripts.check_config import main
-from scripts import rescore_ab_results, run_k3_serial, run_project_ab_benchmark
+from scripts import rescore_ab_results, run_k3_serial, run_lawgent_minimax, run_project_ab_benchmark
 
 
 class CheckConfigScriptTest(unittest.TestCase):
@@ -62,6 +62,16 @@ class RescoreABResultsScriptTest(unittest.TestCase):
 
 
 class ProjectBenchmarkScriptTest(unittest.TestCase):
+    def test_lawgent_task_uses_the_same_answer_type_contract(self):
+        task = run_lawgent_minimax._task({
+            "answer_type": "multiple_choice",
+            "task": "Choose the correct option.",
+            "prompt": "Question",
+            "evidence": [{"evidence_id": "fixture:evidence", "text": "Evidence"}],
+        })
+        self.assertIn("answer with only the zero-based option index or its letter", task)
+        self.assertIn("[fixture:evidence]", task)
+
     def test_reports_project_quality_and_availability_separately(self):
         metrics = run_project_ab_benchmark._metrics([
             {"project": "CodexLaw", "provider_error": None, "answer_correct": True, "citation_valid": True, "common_success": True},

@@ -15,3 +15,5 @@ vendor/
 *.sqlite
 *.db
 *.egg-info/
+build/
+dist/

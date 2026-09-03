@@ -79,11 +79,18 @@ def _task(case: dict[str, Any]) -> str:
     evidence = "\n\n".join(
         f"[{item['evidence_id']}]\n{item['text']}" for item in case.get("evidence", [])
     )
+    answer_type = str(case.get("answer_type", "classification"))
+    if answer_type == "multiple_choice":
+        answer_rule = "For multiple choice, answer with only the zero-based option index or its letter."
+    elif answer_type == "evidence_span":
+        answer_rule = "For evidence spans, answer with the shortest supported text or a faithful concise answer."
+    else:
+        answer_rule = "For classification, answer with exactly one label from the task's answer space."
     return (
         "This is a closed-book legal benchmark. Use only the supplied evidence; do not use "
         "external tools, sources, or unstated facts. Return exactly one JSON object and no "
         "other text with keys answer, citation_ids, confidence. citation_ids must contain only "
-        "the supplied bracketed evidence IDs.\n\n"
+        f"the supplied bracketed evidence IDs. {answer_rule}\n\n"
         f"Task: {case.get('task')}\nQuestion: {case.get('prompt')}\n\nEvidence:\n{evidence}"
     )
 

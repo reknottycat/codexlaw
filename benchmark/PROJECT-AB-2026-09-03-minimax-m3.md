@@ -12,17 +12,24 @@ This is a project-to-project closed-book comparison, not an internal prompt or m
 
 ## Result
 
-Run `20260903T034220Z` evaluated one deterministic case from each public source.
+Run `20260903T035031Z` evaluated a deterministic, source-balanced 12-case batch: four LegalBench classification cases, four LegalBench-RAG CUAD evidence-span cases, and four CaseHOLD multiple-choice cases.
+
+Before this run, the Lawgent input adapter was corrected to include the same answer-type output contract as CodexLaw: a single classification label, only the option index or letter for multiple choice, and a concise supported answer for evidence spans. This prevents the evaluator from treating an otherwise correct but explanatory classification response as a different answer.
 
 | Project | Execution completed | Correct when completed | Valid citation when completed | Common success |
 | --- | ---: | ---: | ---: | ---: |
-| CodexLaw | 3 / 3 | 2 / 3 | 3 / 3 | 2 / 3 |
-| Lawgent | 3 / 3 | 2 / 3 | 3 / 3 | 2 / 3 |
+| CodexLaw | 12 / 12 | 10 / 12 | 12 / 12 | 10 / 12 |
+| Lawgent | 12 / 12 | 11 / 12 | 12 / 12 | 11 / 12 |
 
-The completed LegalBench classification and CaseHOLD multiple-choice rows passed for both projects. On the LegalBench-RAG CUAD evidence-span row, both projects returned valid citations but omitted enough reference conditions to fail the shared strict answer matcher. This sample therefore shows no quality winner.
+Both projects completed every row and supplied valid evidence identifiers for every completed answer. They both passed all eight LegalBench and LegalBench-RAG rows. The only shared wrong answer was `casehold:all:2`; CodexLaw also missed `casehold:all:1`, while Lawgent answered that case correctly. The source breakdown is below.
 
-The raw machine-readable result is `benchmark/results/project-ab-20260903T034220Z.jsonl`; its summary is `benchmark/results/project-ab-20260903T034220Z.summary.json`. These paths are deliberately ignored because they contain provider outputs.
+| Project | CaseHOLD | LegalBench | LegalBench-RAG | Mean wall time per case |
+| --- | ---: | ---: | ---: | ---: |
+| CodexLaw | 2 / 4 | 4 / 4 | 4 / 4 | 2.02 s |
+| Lawgent | 3 / 4 | 4 / 4 | 4 / 4 | 9.80 s |
+
+The raw machine-readable result is `benchmark/results/project-ab-20260903T035031Z.jsonl`; its summary is `benchmark/results/project-ab-20260903T035031Z.summary.json`. These paths are deliberately ignored because they contain provider outputs.
 
 ## Interpretation
 
-This is a valid first cross-source baseline, not a statistically significant ranking. Extend it with deterministic, source-balanced batches only after preserving the same model, output budget, closed-book evidence rule, common evaluator, and timeout policy. The earlier K3 report remains integration evidence for CodexLaw and must not be used to infer Lawgent-versus-CodexLaw performance.
+This single 12-case run favors Lawgent by one CaseHOLD answer, while CodexLaw is about five times faster in wall time on this host. It is not a statistically significant quality ranking: MiniMax responses are nondeterministic and the sample is small. Extend only with deterministic, source-balanced batches while preserving the model, output budget, closed-book evidence rule, answer-type output contract, common evaluator, and timeout policy. The earlier K3 report remains integration evidence for CodexLaw and must not be used to infer Lawgent-versus-CodexLaw performance.

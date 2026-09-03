@@ -87,6 +87,8 @@ $env:PYTHONPATH = "src"
 python scripts/run_project_ab_benchmark.py --limit 3 --source legalbench-rag,legalbench,casehold --timeout 300
 ```
 
+Use `--limit 12` for the documented four-cases-per-source baseline. The batch is deterministic and source-balanced; larger batches should keep the same model, closed-book policy, answer-type output contract, evaluator, and timeout.
+
 ## Live NVIDIA Kimi K3 gate
 
 The live gate uses NVIDIA's hosted OpenAI-compatible endpoint. It is strictly serial and requires both a runtime `NVIDIA_API_KEY` and explicit `LEGALBENCH_LIVE_CONFIRM=true`.

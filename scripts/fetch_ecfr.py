@@ -21,7 +21,7 @@ def main() -> int:
     request = Request(url, headers={
         "Accept": "application/xml",
         "Accept-Encoding": "gzip",
-        "User-Agent": "codexlaw-reproducible-harness/0.2.0",
+        "User-Agent": "codexlaw-reproducible-harness/0.3.1",
     })
     with urlopen(request, timeout=60) as response:
         payload = response.read()

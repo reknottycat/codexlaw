@@ -64,7 +64,7 @@ python scripts/query_embedding_index.py "What is the expiration date of this con
 
 ## A/B benchmark on real cases
 
-The runner selects a deterministic, source-balanced sample and executes A then B serially with the same K3 settings. The default effective output budget is 20000 tokens, with `reasoning_effort=max`, streaming enabled, a 900-second request timeout, and a 30-second inter-request interval. Results are written under ignored `benchmark/results/`.
+The runner selects a deterministic, source-balanced sample and executes A then B serially with the same K3 settings. The default effective output budget is 65536 tokens, the NVIDIA K3 API maximum, with `reasoning_effort=max`, streaming enabled, a 900-second request timeout, and a 30-second inter-request interval. Each completed A/B row is appended immediately under ignored `benchmark/results/` and reported on the console, so partial real-run evidence remains available if a later provider request is slow or fails.
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -73,6 +73,8 @@ python scripts/run_ab_benchmark.py --limit 6 --source legalbench-rag,legalbench,
 ```
 
 Use a smaller `--limit` for a connectivity smoke test. A live run is intentionally not a load test or an instruction to send all 140,292 cases to a paid provider.
+
+For a bounded comparative batch, keep the 65536-token default and make the retry envelope explicit: `NVIDIA_REQUEST_TIMEOUT_SECONDS=300` and `NVIDIA_RETRIES=1` mean at most two 300-second attempts per architecture/case. To apply a later evaluator improvement without sending another provider request, use `python scripts/rescore_ab_results.py benchmark/results/<run>.jsonl`; it only prints recomputed metrics and does not modify the original rows.
 
 ## Live NVIDIA Kimi K3 gate
 
@@ -87,7 +89,7 @@ $env:PYTHONPATH = "src"
 python scripts/check_config.py
 ```
 
-The default output budget is 20000 tokens. Lower it for a short connectivity smoke test, or set `LIVE_LEGALBENCH_MAX_TOKENS=4096` when a faster, smaller evaluation is intentional. Never run the live gate as a load test.
+The default output budget is 65536 tokens. Lower it for a short connectivity smoke test, or set `LIVE_LEGALBENCH_MAX_TOKENS=4096` when a faster, smaller evaluation is intentional. Never run the live gate as a load test.
 
 ```powershell
 $env:PYTHONPATH = "src"

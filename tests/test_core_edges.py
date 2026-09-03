@@ -32,7 +32,7 @@ class ConfigEdgeTest(unittest.TestCase):
         self.assertEqual(settings.max_tokens, 256)
 
     def test_default_output_token_budget_allows_reasoning(self):
-        self.assertEqual(load_settings({}).max_tokens, 20000)
+        self.assertEqual(load_settings({}).max_tokens, 65536)
 
 
 class WorkflowStateEdgeTest(unittest.TestCase):

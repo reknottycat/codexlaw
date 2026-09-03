@@ -21,7 +21,7 @@ class Settings:
     live_cases: int
     live_confirmed: bool
     nvidia_api_key: str | None
-    max_tokens: int = 20000
+    max_tokens: int = 65536
     embedding_base_url: str = "http://192.168.1.6:8002/v1"
     embedding_api_key: str | None = None
     embedding_requires_api_key: bool = False
@@ -49,7 +49,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     try:
         interval = float(values.get("LIVE_LEGALBENCH_INTERVAL_SECONDS", "30"))
         cases = int(values.get("LIVE_LEGALBENCH_CASES", "3"))
-        max_tokens = int(values.get("LIVE_LEGALBENCH_MAX_TOKENS", "20000"))
+        max_tokens = int(values.get("LIVE_LEGALBENCH_MAX_TOKENS", "65536"))
         temperature = float(values.get("NVIDIA_TEMPERATURE", "1.0"))
         request_timeout_seconds = float(values.get("NVIDIA_REQUEST_TIMEOUT_SECONDS", "900"))
         retries = int(values.get("NVIDIA_RETRIES", "2"))

@@ -1,13 +1,17 @@
 import io
+import json
 import os
+import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import patch
 
 from codelaw.config import load_settings
 from scripts.check_config import main
-from scripts import run_k3_serial
+from scripts import rescore_ab_results, run_k3_serial
 
 
 class CheckConfigScriptTest(unittest.TestCase):
@@ -16,7 +20,7 @@ class CheckConfigScriptTest(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True), redirect_stdout(output):
             exit_code = main()
         self.assertEqual(exit_code, 2)
-        self.assertIn("max_tokens=20000", output.getvalue())
+        self.assertIn("max_tokens=65536", output.getvalue())
         self.assertIn("live_provider=blocked", output.getvalue())
         self.assertNotIn("NVIDIA_API_KEY", output.getvalue())
 
@@ -31,6 +35,30 @@ class RunK3SerialScriptTest(unittest.TestCase):
         self.assertIn("NVIDIA K3 request timed out", output.getvalue())
         self.assertIn("retry later", output.getvalue())
         self.assertNotIn("Traceback", output.getvalue())
+
+
+class RescoreABResultsScriptTest(unittest.TestCase):
+    def test_rescores_a_concise_grounded_evidence_answer_without_rewriting_source(self):
+        row = {
+            "architecture": "A",
+            "answer": "end of the current calendar year automatically renewed",
+            "expected_answer": "The agreement remains in effect until the end of the current calendar year and is automatically renewed.",
+            "answer_type": "evidence_span",
+            "citation_valid": True,
+            "workflow_compliant": True,
+            "success": False,
+            "error": None,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.jsonl"
+            source = json.dumps(row)
+            path.write_text(source + "\n", encoding="utf-8")
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["rescore_ab_results.py", str(path)]), redirect_stdout(output):
+                exit_code = rescore_ab_results.main()
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(path.read_text(encoding="utf-8"), source + "\n")
+        self.assertIn('"success_rate": 1.0', output.getvalue())
 
     def test_reports_provider_http_error_without_traceback(self):
         settings = load_settings({"NVIDIA_API_KEY": "test-key", "LEGALBENCH_LIVE_CONFIRM": "true"})

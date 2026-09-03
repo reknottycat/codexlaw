@@ -26,6 +26,23 @@ class BenchmarkParsingTest(unittest.TestCase):
             answer_type="evidence_span",
         ))
 
+    def test_evidence_span_accepts_a_grounded_concise_clause_from_long_reference(self):
+        self.assertTrue(answer_matches(
+            answer="end of the current calendar year automatically renewed",
+            expected=(
+                "This agreement remains in effect until the end of the current calendar year "
+                "and shall be automatically renewed for successive one year periods unless terminated"
+            ),
+            answer_type="evidence_span",
+        ))
+
+    def test_evidence_span_rejects_an_insubstantial_word_overlap(self):
+        self.assertFalse(answer_matches(
+            answer="terminated today",
+            expected="The agreement is automatically renewed unless terminated according to paragraph eighteen",
+            answer_type="evidence_span",
+        ))
+
 
 class BenchmarkRunnerTest(unittest.TestCase):
     def setUp(self):
@@ -72,6 +89,18 @@ class BenchmarkRunnerTest(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(len(calls), 2)
         self.assertEqual(waits, [30])
+
+    def test_serial_runner_reports_each_completed_row(self):
+        reported = []
+        rows = run_ab(
+            [self.case],
+            ask=lambda _: '{"answer":"Yes","citation_ids":["fixture:1:evidence"]}',
+            interval_seconds=30,
+            lawgent=LawgentAdapter(lambda _: "[]"),
+            sleep=lambda _: None,
+            on_row=reported.append,
+        )
+        self.assertEqual(reported, rows)
 
     def test_invalid_citation_does_not_count_as_completed_verification(self):
         row = run_case(

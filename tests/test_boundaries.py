@@ -1,5 +1,6 @@
 import json
 import unittest
+from http.client import RemoteDisconnected
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -215,6 +216,18 @@ class NvidiaClientTest(unittest.TestCase):
             self.assertEqual(NvidiaChatClient(settings).ask("hello"), "done")
         self.assertEqual(open_url.call_count, 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+
+    def test_chat_client_retries_remote_disconnect_when_configured(self):
+        settings = load_settings({
+            "NVIDIA_API_KEY": "test-key",
+            "LEGALBENCH_LIVE_CONFIRM": "true",
+            "NVIDIA_STREAM": "false",
+            "NVIDIA_RETRIES": "2",
+        })
+        with patch("codelaw.live.urlopen", side_effect=[RemoteDisconnected("closed"), _Response({"choices": [{"message": {"content": "done"}}]})]) as open_url, patch("codelaw.live.time.sleep") as sleep:
+            self.assertEqual(NvidiaChatClient(settings).ask("hello"), "done")
+        self.assertEqual(open_url.call_count, 2)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1])
 
 
 if __name__ == "__main__":

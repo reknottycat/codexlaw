@@ -56,20 +56,28 @@ def main() -> int:
     lawgent_root = PROJECT_ROOT / "vendor" / "lawgent"
     if lawgent_root.exists():
         sys.path.insert(0, str(lawgent_root))
-    try:
-        rows = run_ab(
-            cases,
-            ask=client.ask,
-            interval_seconds=settings.interval_seconds,
-            lawgent=LawgentAdapter(),
-            max_evidence_chars=args.max_evidence_chars,
+    def record_row(row: dict[str, object]) -> None:
+        output.write(json.dumps(row, ensure_ascii=False) + "\n")
+        output.flush()
+        outcome = "ok" if row["success"] else "failed"
+        print(
+            f"live_benchmark=row case={row['case_id']} architecture={row['architecture']} "
+            f"outcome={outcome} elapsed_seconds={row['elapsed_seconds']}"
         )
-    except (TimeoutError, SettingsError) as exc:
-        print(f"live_benchmark=failed: {exc}")
-        return 1
+
     with rows_path.open("w", encoding="utf-8", newline="\n") as output:
-        for row in rows:
-            output.write(json.dumps(row, ensure_ascii=False) + "\n")
+        try:
+            rows = run_ab(
+                cases,
+                ask=client.ask,
+                interval_seconds=settings.interval_seconds,
+                lawgent=LawgentAdapter(),
+                max_evidence_chars=args.max_evidence_chars,
+                on_row=record_row,
+            )
+        except (TimeoutError, SettingsError) as exc:
+            print(f"live_benchmark=failed: {exc}")
+            return 1
     summary = {
         "run_id": run_id,
         "cases": [case["case_id"] for case in cases],

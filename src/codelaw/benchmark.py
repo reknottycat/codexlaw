@@ -107,7 +107,10 @@ def answer_matches(*, answer: str, expected: str, answer_type: str) -> bool:
     if not actual_tokens or not target_tokens:
         return False
     overlap = len(actual_tokens & target_tokens)
-    return (2 * overlap) / (len(actual_tokens) + len(target_tokens)) >= 0.8
+    # Benchmarks often store a full contractual sentence as the reference while
+    # the task requests the shortest supported span. Require a substantial,
+    # non-trivial portion of the submitted answer to be grounded in that span.
+    return overlap >= 4 and overlap / len(actual_tokens) >= 0.8
 
 
 def parse_decision(raw_response: str) -> BenchmarkDecision:
@@ -289,6 +292,7 @@ def run_ab(
     lawgent: LawgentAdapter | None = None,
     sleep: Callable[[float], None] = time.sleep,
     max_evidence_chars: int = 12000,
+    on_row: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     first_request = True
@@ -297,13 +301,16 @@ def run_ab(
             if not first_request:
                 sleep(interval_seconds)
             first_request = False
-            rows.append(run_case(
+            row = run_case(
                 case,
                 architecture=architecture,
                 ask=ask,
                 lawgent=lawgent,
                 max_evidence_chars=max_evidence_chars,
-            ))
+            )
+            rows.append(row)
+            if on_row is not None:
+                on_row(row)
     return rows
 
 

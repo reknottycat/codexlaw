@@ -46,11 +46,13 @@ Set a local `NEO4J_PASSWORD` only in the process environment, then start Neo4j a
 $env:NEO4J_PASSWORD = "use-a-local-password"
 docker compose up -d neo4j
 python scripts/ingest_neo4j.py data/processed/authority/authority.jsonl `
-  --uri bolt://localhost:7687 --user neo4j --password $env:NEO4J_PASSWORD `
+  --uri bolt://localhost:7687 --user neo4j `
   --manifest data/processed/authority/manifest.json --replace-source
 ```
 
-`--replace-source` keeps the graph aligned with the supplied authority manifest by removing only older source-hash versions.
+`--replace-source` keeps the graph aligned with the supplied authority manifest by removing only older versions whose `source_url` belongs to that manifest. Keep the password in the environment or an ignored password file; passing it as a command-line argument can expose it in process listings or shell history.
+
+The hosted NVIDIA endpoint is allowlisted. If a private or self-hosted chat or embedding endpoint is intentional, set `NVIDIA_ALLOW_CUSTOM_ENDPOINT=true` and validate that the endpoint is trusted before providing a key. URLs containing userinfo, query strings, or fragments are rejected.
 
 ## DGX Spark embedding index
 
@@ -78,20 +80,24 @@ For a bounded comparative batch, keep the 65536-token default and make the retry
 
 ## Project-to-project benchmark
 
-`run_project_ab_benchmark.py` compares the two independent projects, not the earlier internal CodexLaw A/B variants: Lawgent runs its native `WorkflowExecutor`; CodexLaw runs its Codex orchestration. Both receive the same selected case and closed-book evidence, use the same locally configured MiniMax-M3 model, and are scored by the same answer-and-evidence evaluator. Project-specific workflow-node counts are intentionally excluded from the common score.
+Install Python dependencies with `python -m pip install -e . -r requirements.txt`. This Windows entry point expects configured `mmx.cmd` and `codex.cmd` executables, plus the isolated Lawgent environment under `.runtime/lawgent-venv/`. MiniMax authentication uses the existing MMX configuration; no key is copied into benchmark records.
+
+`run_project_ab_benchmark.py --codex-engine cli` executes the actual Codex CLI against Lawgent's `WorkflowExecutor`. Both receive the same frozen user task and evidence, MiniMax-M3, temperature 0.1, 4096 output tokens per call and a common per-case process-tree deadline. Case order alternates A/B. Workflow-specific system instructions and call counts remain different and are recorded. The text-only local Responses adapter reuses the same MiniMax Messages client; external tools are disabled. This does not test a general autonomous tool loop. The default `--codex-engine python` retains the Python-wrapper baseline.
+
+Each run records input snapshots, SHA-256, code files including uncommitted edits, CLI version, raw and normalized answers, events, actual model usage and stop reasons. Historical metadata is reconstructed separately without rewriting old results or inventing unknown token counts. The evaluator is unchanged. See [the current audit](docs/project-status-2026-09-06.md).
 
 The Lawgent runner uses the ignored `.runtime/lawgent-venv/` environment and never modifies `vendor/lawgent/`. On this Windows host, its PDF-export import is disabled only in the text benchmark subprocess because the unavailable GTK/Pango DLLs are irrelevant to a JSON legal-answer evaluation.
 
 ```powershell
 $env:PYTHONPATH = "src"
-python scripts/run_project_ab_benchmark.py --limit 60 --source legalbench-rag,legalbench,casehold --timeout 300
+python scripts/run_project_ab_benchmark.py --limit 60 --source legalbench-rag,legalbench,casehold --timeout 180 --codex-engine cli
 ```
 
 The documented baseline uses `--limit 60`: 20 deterministic cases from each source. The batch is source-balanced; larger batches should keep the same model, closed-book policy, answer-type output contract, evaluator, and timeout.
 
 ### Offline vector-RAG variant
 
-For an offline retrieval comparison, first prepare a separate, ignored case stream. It obtains embeddings from the configured private DGX endpoint and searches the local embedding index; it does not fetch legal material from the Internet. Retrieval evidence is prepended to the existing benchmark evidence, so the evaluator can verify every cited evidence ID.
+For an offline retrieval comparison, first prepare a separate, ignored case stream. It obtains embeddings from the configured private DGX endpoint and searches the local embedding index; it does not fetch legal material from the Internet. Retrieval evidence is appended after the existing benchmark evidence, so the evaluator can verify every cited evidence ID.
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -102,7 +108,20 @@ python scripts/run_project_ab_benchmark.py `
   --cases benchmark/results/offline-rag-cases.jsonl --limit 60 --timeout 300
 ```
 
-This is a **vector-RAG** comparison, not a Neo4j graph-RAG claim. A Neo4j-dependent run requires the local Docker engine and Bolt service to be healthy before importing and querying the authority graph.
+This command prepares vector evidence only. The corrected index uses `passage: ` for documents and `query: ` for queries, as required by the deployed Nemotron model. Legacy unprefixed indexes are rejected. Rebuild to a new path with `python scripts/reembed_index.py`; preserve the legacy index for historical reproduction.
+
+### Live graph expansion and native Codex
+
+The verified deployment is Neo4j 5.26.30 on DGX Spark, `bolt://192.168.1.6:7687`, in the independent `codelaw-neo4j` container. Configure `NEO4J_URI`, `NEO4J_USER` and `NEO4J_PASSWORD`, or use the ignored `.runtime/graph-connection.json` with a `password_file`. Never commit credentials. Graph expansion verifies every seed and source hash; missing graph data raises an error instead of silently falling back. REFERENCES edges come from explicit section references and SAME_PART denotes structural proximity, not semantic support.
+
+```powershell
+python scripts/prepare_graph_rag_cases.py --cases benchmark/results/offline-rag-cases.jsonl --output benchmark/results/vector-graph-cases.jsonl
+python scripts/run_project_ab_benchmark.py --cases benchmark/results/vector-graph-cases.jsonl --limit 60 --timeout 180 --codex-engine cli
+python scripts/reconstruct_run_metadata.py
+python scripts/build_dashboard.py
+```
+
+Graph queries occur during preparation. Both harnesses then consume the exact same frozen retrieval results, rather than independently issuing live graph queries. The dashboard is a standalone HTML file and can be shared offline.
 
 ## Live NVIDIA Kimi K3 gate
 

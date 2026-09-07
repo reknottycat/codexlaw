@@ -70,7 +70,7 @@ K3 保留 7 个有摘要的小批次，部分存在错误，不构成完整排�
 
 ## 验证与交付
 
-82 项 unittest 通过；Windows 实际进程树超时检查在约 1.275 秒内停止父子进程（设置时限 1 秒）；图谱缺失节点和错误源哈希负向检查通过；v2 在线重嵌入一致性检查通过。证据记录位于 `benchmark/results/graph-live-audit-20260906.json`、`embedding-live-audit-20260906.json` 和 `live-negative-controls-20260906.json`。
+86 项 unittest 通过；Windows 实际进程树超时检查在约 1.275 秒内停止父子进程（设置时限 1 秒）；图谱缺失节点和错误源哈希负向检查通过；v2 在线重嵌入一致性检查通过。证据记录位于 `benchmark/results/graph-live-audit-20260906.json`、`embedding-live-audit-20260906.json` 和 `live-negative-controls-20260906.json`。
 
 运行 `python scripts/reconstruct_run_metadata.py` 再运行 `python scripts/build_dashboard.py`，生成独立离线文件 `dist/legal-agent-ab.html`。页面提供批次、任务来源、胜负和失败类型筛选，逐题对比、Token 判断、中间调用恢复、图查询来源、完整元数据、数据导出与打印。页面现收录 21 个完整批次、580 条记录。实测桌面与手机无横向溢出，下载 HTML 离线启动、筛选与弹窗均正常。
 

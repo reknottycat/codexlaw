@@ -25,3 +25,10 @@ python scripts/check_config.py
 评测观察台：运行 `python scripts/build_dashboard.py`，打开生成的 `dist/legal-agent-ab.html`；单文件支持离线分享、批次对照与逐题核验。当前卡点和实测结果见 [项目状态](docs/project-status-2026-09-06.md)。
 
 运行原生对照请明确使用 `--codex-engine cli`。该路径通过仅支持文本的 Responses 转接层调用与 Lawgent 相同的 MiniMax Messages 客户端，保存真实 Codex 事件与模型调用记录。双方禁用外部工具；此实验不覆盖完整自主工具循环。默认 `python` 路径保留为自建封装基线，历史结果不可改称原生 Codex 成绩。
+
+## 文档与记录
+
+- [测试与复现](TESTING.md) · [数据来源与许可](data/README.md) · [变更记录](CHANGELOG.md)
+- [项目状态](docs/project-status-2026-09-06.md) · [全量重建计划](docs/rebuild-plan.md) · [Harness 说明稿](docs/harness-video-narration.md)
+- [Kimi K3 实时数据验收](benchmark/ACCEPTANCE-2026-09-03-k3-65536.md) · [真实数据验收快照](benchmark/ACCEPTANCE-2026-09-03.md)
+- [离线向量 RAG 项目对照](benchmark/OFFLINE-VECTOR-RAG-PROJECT-AB-2026-09-03-minimax-m3.md) · [Lawgent 与 CodexLaw 项目对照](benchmark/PROJECT-AB-2026-09-03-minimax-m3.md)

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import json
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from .process import run_process
 
 
 @dataclass(frozen=True)
@@ -26,12 +30,24 @@ class MiniMaxChatClient:
         self,
         runtime: MiniMaxRuntime,
         *,
-        run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        run: Callable[..., subprocess.CompletedProcess[str]] = run_process,
     ) -> None:
         self.runtime = runtime
         self._run = run
+        self.calls: list[dict] = []
+        self._lock = threading.Lock()
 
     def ask(self, prompt: str, *, system: str = "") -> str:
+        # Lawgent may fan specialists out; serialize actual provider requests.
+        return self.ask_with_trace(prompt, system=system)[0]
+
+    def ask_with_trace(self, prompt: str, *, system: str = "") -> tuple[str, dict]:
+        """Return the answer and its trace while holding the serialization lock."""
+        with self._lock:
+            response = self._ask(prompt, system=system)
+            return response, dict(self.calls[-1])
+
+    def _ask(self, prompt: str, *, system: str = "") -> str:
         prompt = _command_text(prompt)
         system = _command_text(system)
         messages = []
@@ -51,27 +67,44 @@ class MiniMaxChatClient:
             "--temperature",
             str(self.runtime.temperature),
             "--output",
-            "text",
-            "--quiet",
+            "json",
             "--non-interactive",
             "--timeout",
             str(int(self.runtime.timeout_seconds)),
         ]
-        completed = self._run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            input=json.dumps(messages, ensure_ascii=False),
-            timeout=self.runtime.timeout_seconds + 15,
-            check=False,
-        )
+        # mmx --quiet overrides --output json and drops usage/stop_reason.
+        started = time.monotonic()
+        trace = {'messages': messages, 'requested_model': self.runtime.model,
+                 'max_tokens': self.runtime.max_tokens, 'temperature': self.runtime.temperature,
+                 'timeout_seconds': self.runtime.timeout_seconds}
+        self.calls.append(trace)
+        try:
+            completed = self._run(command, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                                  input=json.dumps(messages, ensure_ascii=False),
+                                  timeout=self.runtime.timeout_seconds, check=False)
+        except subprocess.TimeoutExpired:
+            trace.update(error='provider_timeout', elapsed_seconds=round(time.monotonic() - started, 3))
+            raise
+        trace.update(elapsed_seconds=round(time.monotonic() - started, 3), exit_code=completed.returncode)
         if completed.returncode:
+            trace['error'] = f'cli_exit_{completed.returncode}'
             raise RuntimeError(f"MiniMax CLI exited with status {completed.returncode}")
+        try:
+            envelope = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            envelope = None
+        if isinstance(envelope, dict) and ('content' in envelope or 'choices' in envelope):
+            trace['provider_response'] = envelope
+            trace['usage'] = envelope.get('usage')
+            trace['model'] = envelope.get('model')
+            trace['stop_reason'] = envelope.get('stop_reason') or next((c.get('finish_reason') for c in envelope.get('choices', [])), None)
+        else:
+            trace.update(usage=None, stop_reason=None, response_format='plain_text_without_telemetry')
         response = _response_text(completed.stdout.strip())
         if not response:
+            trace['error'] = 'empty_response'
             raise RuntimeError("MiniMax CLI returned an empty response")
+        trace['response_text'] = response
         return response
 
 

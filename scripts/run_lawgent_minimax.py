@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from codelaw.minimax import MiniMaxChatClient, MiniMaxRuntime  # noqa: E402
+from codelaw.experiment import shared_task  # noqa: E402
 
 
 def _load_lawgent() -> tuple[Any, Any, Any, Any, Any]:
@@ -89,23 +90,35 @@ def _specialist_provider_override(executor_type: Any, provider: MiniMaxLawgentPr
 
 
 def _task(case: dict[str, Any]) -> str:
-    evidence = "\n\n".join(
-        f"[{item['evidence_id']}]\n{item['text']}" for item in case.get("evidence", [])
+    return shared_task(case)
+
+
+def execute_case(case: dict[str, Any], runtime: MiniMaxRuntime) -> dict[str, Any]:
+    config, settings_type, run_result, stream_event, executor_type = _load_lawgent()
+    settings = settings_type(
+        provider='openai', default_jurisdiction='US', default_language='en', max_tokens=runtime.max_tokens,
+        parent_max_iterations=8, enable_web_search=False, enable_web_fetch=False, enable_cite_check=False,
+        outputs_dir=PROJECT_ROOT / '.runtime/lawgent-benchmark/outputs',
+        state_dir=PROJECT_ROOT / '.runtime/lawgent-benchmark/state',
+        logs_dir=PROJECT_ROOT / '.runtime/lawgent-benchmark/logs',
     )
-    answer_type = str(case.get("answer_type", "classification"))
-    if answer_type == "multiple_choice":
-        answer_rule = "For multiple choice, answer with only the zero-based option index or its letter."
-    elif answer_type == "evidence_span":
-        answer_rule = "For evidence spans, answer with the shortest supported text or a faithful concise answer."
-    else:
-        answer_rule = "For classification, answer with exactly one label from the task's answer space."
-    return (
-        "This is a closed-book legal benchmark. Use only the supplied evidence; do not use "
-        "external tools, sources, or unstated facts. Return exactly one JSON object and no "
-        "other text with keys answer, citation_ids, confidence. citation_ids must contain only "
-        f"the supplied bracketed evidence IDs. {answer_rule}\n\n"
-        f"Task: {case.get('task')}\nQuestion: {case.get('prompt')}\n\nEvidence:\n{evidence}"
-    )
+    provider = MiniMaxLawgentProvider(runtime, run_result, stream_event)
+    final_text = ''
+    error = None
+    events = []
+    try:
+        with config.override_current_settings(settings):
+            executor = executor_type(settings=settings, provider=provider)
+            with _specialist_provider_override(executor_type, provider):
+                for event in executor.stream(_task(case)):
+                    events.append({'kind': event.kind, 'data': event.data})
+                    if event.kind == 'delta':
+                        final_text += str(event.data.get('text', ''))
+                    if event.kind == 'error':
+                        error = str(event.data.get('message', 'Lawgent workflow failed'))
+    except Exception as exc:
+        error = f'{type(exc).__name__}: {exc}'
+    return dict(response=final_text, error=error, events=events, calls=provider.client.calls)
 
 
 def _load_case(args: argparse.Namespace) -> dict[str, Any]:
@@ -123,44 +136,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=PROJECT_ROOT / "data" / "processed" / "benchmark" / "cases.jsonl")
     parser.add_argument("--case-id", help="Read one case directly from --cases instead of stdin")
+    parser.add_argument('--timeout', type=float, default=300)
+    parser.add_argument('--max-tokens', type=int, default=4096)
+    parser.add_argument('--temperature', type=float, default=0.1)
     args = parser.parse_args()
     try:
         case = _load_case(args)
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         print(f"lawgent_runner=blocked: could not load benchmark case: {exc}")
         return 2
-    config, settings_type, run_result, stream_event, executor_type = _load_lawgent()
-    runtime = MiniMaxRuntime()
-    settings = settings_type(
-        provider="openai",
-        default_jurisdiction="US",
-        default_language="en",
-        max_tokens=runtime.max_tokens,
-        parent_max_iterations=8,
-        enable_web_search=False,
-        enable_web_fetch=False,
-        enable_cite_check=False,
-        outputs_dir=PROJECT_ROOT / ".runtime" / "lawgent-benchmark" / "outputs",
-        state_dir=PROJECT_ROOT / ".runtime" / "lawgent-benchmark" / "state",
-        logs_dir=PROJECT_ROOT / ".runtime" / "lawgent-benchmark" / "logs",
-    )
-    provider = MiniMaxLawgentProvider(runtime, run_result, stream_event)
-    final_text = ""
-    error: str | None = None
-    event_kinds: list[str] = []
-    with config.override_current_settings(settings):
-        executor = executor_type(settings=settings, provider=provider)
-        # Lawgent constructs providers inside its native specialist fan-out.
-        # Bind those calls to the same MiniMax adapter as the parent workflow.
-        with _specialist_provider_override(executor_type, provider):
-            for event in executor.stream(_task(case)):
-                event_kinds.append(event.kind)
-                if event.kind == "delta":
-                    final_text += str(event.data.get("text", ""))
-                if event.kind == "error":
-                    error = str(event.data.get("message", "Lawgent workflow failed"))
-    print(json.dumps({"response": final_text, "error": error, "events": event_kinds}, ensure_ascii=False))
-    return 0 if not error else 1
+    payload = execute_case(case, MiniMaxRuntime(timeout_seconds=args.timeout, max_tokens=args.max_tokens, temperature=args.temperature))
+    print(json.dumps(payload, ensure_ascii=False, default=str))
+    return 0 if not payload['error'] else 1
 
 
 if __name__ == "__main__":

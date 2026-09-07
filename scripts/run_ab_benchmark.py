@@ -8,6 +8,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -49,7 +50,9 @@ def main() -> int:
         print("live_benchmark=blocked: no benchmark cases matched the selection")
         return 2
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # Include microseconds and entropy so concurrent runs cannot overwrite
+    # result files created in the same second.
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + '-' + uuid4().hex[:8]
     rows_path = args.output_dir / f"ab-{run_id}.jsonl"
     summary_path = args.output_dir / f"ab-{run_id}.summary.json"
     client = NvidiaChatClient(settings)

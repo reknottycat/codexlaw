@@ -20,7 +20,7 @@ from codelaw.retrieval import _cosine  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("query")
-    parser.add_argument("--index", type=Path, default=Path("data/processed/embedding-index/index.jsonl"))
+    parser.add_argument("--index", type=Path, default=Path("data/processed/embedding-index-v2/index.jsonl"))
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--snippet-chars", type=int, default=240)
     args = parser.parse_args()
@@ -32,6 +32,11 @@ def main() -> int:
         return 2
     try:
         settings = load_settings()
+        manifest = json.loads(args.index.with_name('manifest.json').read_text(encoding='utf-8'))
+        if manifest.get('embedding_model') != settings.embedding_model:
+            raise ValueError('Query and index models differ')
+        if settings.embedding_model.endswith('Nemotron-3-Embed-1B-BF16') and manifest.get('embedding_format', {}).get('document_prefix') != 'passage: ':
+            raise ValueError('Legacy unprefixed index is incompatible with the corrected query encoder; use v2')
         query_vector = embedding_client(settings).embed([args.query])[0]
     except (SettingsError, OSError, ValueError, RuntimeError) as exc:
         print(f"embedding_query=failed: {exc}")

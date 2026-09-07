@@ -120,7 +120,7 @@ def main() -> int:
                 nonlocal count, dimension, batch
                 if not batch:
                     return
-                vectors = client.embed([str(row["text"]) for row in batch])
+                vectors = client.embed([str(row["text"]) for row in batch], input_type='passage')
                 if len(vectors) != len(batch):
                     raise RuntimeError("Embedding endpoint returned a different number of vectors")
                 for row, vector in zip(batch, vectors):
@@ -149,6 +149,7 @@ def main() -> int:
         "dimensions": dimension,
         "source_counts": source_counts,
         "embedding_model": settings.embedding_model,
+        "embedding_format": {"document_prefix": "passage: ", "query_prefix": "query: "} if settings.embedding_model.endswith('Nemotron-3-Embed-1B-BF16') else {},
         "embedding_base_url": settings.embedding_base_url,
         "authority_sha256": _sha256(args.authority),
         "rag_path_map_sha256": _sha256(args.rag_root / "path-map.json"),

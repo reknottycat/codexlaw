@@ -95,7 +95,7 @@ class _Response:
 class NvidiaClientTest(unittest.TestCase):
     def test_embedding_request_and_result_order(self):
         response = _Response({"data": [{"index": 1, "embedding": [2.0]}, {"index": 0, "embedding": [1.0]}]})
-        client = NvidiaEmbeddingClient(base_url="https://nvidia.test/v1/", api_key="test-key", model="embed-model")
+        client = NvidiaEmbeddingClient(base_url="https://nvidia.test/v1/", api_key="test-key", model="embed-model", allow_custom_endpoint=True)
         with patch("codelaw.nvidia.urlopen", return_value=response) as open_url:
             self.assertEqual(client.embed(["first", "second"]), [[1.0], [2.0]])
         request = open_url.call_args.args[0]
@@ -130,6 +130,7 @@ class NvidiaClientTest(unittest.TestCase):
         settings = load_settings({
             "NVIDIA_API_KEY": "test-key",
             "NVIDIA_BASE_URL": "https://nvidia.test/v1/",
+            "NVIDIA_ALLOW_CUSTOM_ENDPOINT": "true",
             "NVIDIA_CHAT_MODEL": "chat-model",
             "LIVE_LEGALBENCH_MAX_TOKENS": "256",
             "NVIDIA_STREAM": "false",
@@ -168,6 +169,7 @@ class NvidiaClientTest(unittest.TestCase):
         settings = load_settings({
             "NVIDIA_API_KEY": "test-key",
             "NVIDIA_BASE_URL": "https://nvidia.test/v1/",
+            "NVIDIA_ALLOW_CUSTOM_ENDPOINT": "true",
             "LEGALBENCH_LIVE_CONFIRM": "true",
         })
         with patch("codelaw.live.urlopen", return_value=StreamResponse()):

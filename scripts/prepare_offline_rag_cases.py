@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from array import array
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from codelaw.benchmark import select_cases  # noqa: E402
 from codelaw.config import load_settings  # noqa: E402
 from codelaw.nvidia import embedding_client  # noqa: E402
+from codelaw.experiment import file_hash
 
 
 def _retrieval_evidence(case: dict[str, Any], hits: list[dict[str, Any]], *, max_chars: int) -> list[dict[str, Any]]:
@@ -77,10 +79,15 @@ def _top_hits(rows: list[dict[str, Any]], matrix: Any, queries: list[list[float]
     scores = matrix @ query_matrix.T
     output: list[list[dict[str, Any]]] = []
     source_limit = max(1, per_source)
+    source_indices: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        source_indices.setdefault(str(row['document_id']).split(':', 1)[0], []).append(index)
     for column in range(scores.shape[1]):
-        candidate_count = min(len(rows), source_limit * 24)
-        candidates = np.argpartition(scores[:, column], -candidate_count)[-candidate_count:]
-        ranked = sorted((int(index) for index in candidates), key=lambda index: float(scores[index, column]), reverse=True)
+        # Rank each source independently; a global top-48 can omit a source.
+        candidates = []
+        for indices in source_indices.values():
+            candidates.extend(sorted(indices, key=lambda i: (-float(scores[i, column]), str(rows[i]['document_id'])))[:source_limit])
+        ranked = sorted(candidates, key=lambda i: (-float(scores[i, column]), str(rows[i]['document_id'])))
         selected: list[dict[str, Any]] = []
         counts: dict[str, int] = {}
         for index in ranked:
@@ -97,7 +104,7 @@ def _top_hits(rows: list[dict[str, Any]], matrix: Any, queries: list[list[float]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=Path("data/processed/benchmark/cases.jsonl"))
-    parser.add_argument("--index", type=Path, default=Path("data/processed/embedding-index/index.jsonl"))
+    parser.add_argument("--index", type=Path, default=Path("data/processed/embedding-index-v2/index.jsonl"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=60)
     parser.add_argument("--source", action="append")
@@ -114,10 +121,19 @@ def main() -> int:
     if not args.index.exists():
         print(f"offline_rag=blocked: embedding index does not exist: {args.index}")
         return 2
+    index_manifest_path = args.index.with_name('manifest.json')
+    index_manifest = json.loads(index_manifest_path.read_text(encoding='utf-8'))
+    settings = load_settings()
+    if index_manifest.get('embedding_model') != settings.embedding_model:
+        raise ValueError('Query model differs from index model; rebuild or choose the matching model')
+    if settings.embedding_model.endswith('Nemotron-3-Embed-1B-BF16') and index_manifest.get('embedding_format', {}).get('document_prefix') != 'passage: ':
+        raise ValueError('Legacy index has no passage prefix; use the corrected v2 index')
+    if args.output.exists():
+        raise ValueError('Output exists; choose a new path to preserve previous inputs')
     try:
         rows, matrix = _load_index(args.index)
-        queries = embedding_client(load_settings()).embed([
-            f"{case.get('task', '')}\n{case.get('prompt', '')}" for case in cases
+        queries = embedding_client(settings).embed([
+            str(case.get('prompt', '')) for case in cases
         ])
         hits_by_case = _top_hits(rows, matrix, queries, per_source=args.per_source)
     except (OSError, RuntimeError, ValueError) as exc:
@@ -128,8 +144,8 @@ def main() -> int:
         for case, hits in zip(cases, hits_by_case):
             augmented = dict(case)
             augmented["evidence"] = [
-                *_retrieval_evidence(case, hits, max_chars=args.snippet_chars),
                 *case.get("evidence", []),
+                *_retrieval_evidence(case, hits, max_chars=args.snippet_chars),
             ]
             augmented["offline_rag"] = {
                 "index": str(args.index),
@@ -137,6 +153,14 @@ def main() -> int:
                 "retrieved_evidence_ids": [item["evidence_id"] for item in augmented["evidence"] if str(item["evidence_id"]).startswith("retrieval:")],
             }
             output.write(json.dumps(augmented, ensure_ascii=False) + "\n")
+    metadata = dict(schema_version='2.0', input_path=str(args.cases.resolve()), input_sha256=file_hash(args.cases),
+        index_path=str(args.index.resolve()), index_sha256=file_hash(args.index), index_manifest_sha256=file_hash(index_manifest_path),
+        output_path=str(args.output.resolve()), output_sha256=file_hash(args.output), query_template='prompt_only',
+        query_prefix='query: ', document_prefix='passage: ', evidence_order='supplied evidence, then retrieval',
+        selection='source-balanced deterministic', sources=sources, limit=args.limit, per_source=args.per_source,
+        snippet_chars=args.snippet_chars, actual_cases=len(cases), embedding_model=settings.embedding_model,
+        embedding_endpoint=settings.embedding_base_url, created_at=datetime.now(timezone.utc).isoformat())
+    args.output.with_suffix('.manifest.json').write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps({
         "offline_rag": "ready",
         "cases": len(cases),

@@ -1,6 +1,7 @@
 import unittest
 
-from codelaw.config import SettingsError, load_settings
+from codelaw.config import SettingsError, load_settings, normalise_endpoint
+from codelaw.graph import normalise_graph_uri
 from codelaw.ecfr import parse_title_xml
 from codelaw.retrieval import BM25Index, DenseIndex, Document, HybridRetriever
 from codelaw.workflow import REQUIRED_NODES, WorkflowState
@@ -30,6 +31,19 @@ class ConfigEdgeTest(unittest.TestCase):
     def test_load_settings_reads_output_token_budget(self):
         settings = load_settings({"LIVE_LEGALBENCH_MAX_TOKENS": "256"})
         self.assertEqual(settings.max_tokens, 256)
+
+    def test_custom_chat_endpoint_requires_explicit_opt_in(self):
+        settings = load_settings({"NVIDIA_API_KEY": "test", "NVIDIA_BASE_URL": "https://collector.invalid/v1", "LEGALBENCH_LIVE_CONFIRM": "true"})
+        with self.assertRaisesRegex(SettingsError, "NVIDIA_ALLOW_CUSTOM_ENDPOINT"):
+            settings.require_live_provider()
+
+    def test_endpoint_rejects_embedded_credentials(self):
+        with self.assertRaisesRegex(SettingsError, "userinfo"):
+            normalise_endpoint("https://user:secret@integrate.api.nvidia.com/v1", "NVIDIA_BASE_URL")
+
+    def test_graph_uri_rejects_query_secrets(self):
+        with self.assertRaisesRegex(ValueError, "query"):
+            normalise_graph_uri("bolt://localhost:7687?password=secret")
 
     def test_default_output_token_budget_allows_reasoning(self):
         self.assertEqual(load_settings({}).max_tokens, 65536)

@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 def main() -> int:
@@ -17,7 +18,15 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("data/sources/ecfr"))
     args = parser.parse_args()
     url = f"https://www.ecfr.gov/api/versioner/v1/full/{args.issue_date}/title-{args.title}.xml"
-    payload = urlopen(url, timeout=60).read()
+    request = Request(url, headers={
+        "Accept": "application/xml",
+        "Accept-Encoding": "gzip",
+        "User-Agent": "codexlaw-reproducible-harness/0.3.1",
+    })
+    with urlopen(request, timeout=60) as response:
+        payload = response.read()
+        if response.headers.get("Content-Encoding", "").lower() == "gzip":
+            payload = gzip.decompress(payload)
     args.out.mkdir(parents=True, exist_ok=True)
     xml_path = args.out / f"title-{args.title}-{args.issue_date}.xml"
     xml_path.write_bytes(payload)

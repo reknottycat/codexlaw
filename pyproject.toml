@@ -7,6 +7,7 @@ name = "codelaw"
 version = "0.5.0.0"
 description = "Reproducible Legal Agent Harness A/B"
 requires-python = ">=3.11"
+dependencies = ["psutil>=5.9,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -9,6 +9,7 @@ import re
 import os
 from pathlib import Path
 import sys
+from collections import Counter
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
@@ -17,6 +18,44 @@ from codelaw.graph import connection, normalise_graph_uri
 
 def _sha256(value: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-f]{64}", value))
+
+
+def _source_scopes(manifest: dict, rows: list[dict], *, require_complete: bool = False) -> list[dict]:
+    """Bind versions to stable eCFR titles, not dated download URLs."""
+    scopes: dict[int, set[str]] = {}
+    expected = set()
+    expected_counts = {}
+    for source in manifest.get('sources', []):
+        title = int(source['title'])
+        digest = str(source['sha256'])
+        if title < 1 or not _sha256(digest):
+            raise ValueError('manifest sources require a positive title and source sha256')
+        scopes.setdefault(title, set()).add(digest)
+        identity = (f'ecfr:{title}', str(source['source_url']), digest)
+        if identity in expected:
+            raise ValueError('duplicate source identity in manifest')
+        expected.add(identity)
+        if require_complete:
+            count = source.get('records')
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                raise ValueError('--replace-source requires manifest record counts')
+            expected_counts[identity] = count
+    actual_counts = Counter()
+    seen = set()
+    for row in rows:
+        source_id = str(row['authority_id']).rsplit(':', 1)[0]
+        identity = (source_id, str(row.get('source_url', '')), str(row['sha256']))
+        if identity not in expected:
+            raise ValueError('authority record source identity does not match the supplied manifest')
+        record_identity = (identity, row['authority_id'])
+        if record_identity in seen:
+            raise ValueError('duplicate authority record in source version')
+        seen.add(record_identity)
+        actual_counts[identity] += 1
+    if require_complete and any(actual_counts[identity] != count for identity, count in expected_counts.items()):
+        raise ValueError('--replace-source requires all records from every manifest source')
+    return [dict(authority_prefix=f'ecfr:{title}:', sha256s=sorted(hashes))
+            for title, hashes in sorted(scopes.items())]
 
 
 def main() -> int:
@@ -28,7 +67,7 @@ def main() -> int:
     parser.add_argument("--database", default="neo4j")
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument("--manifest", help="Optional prepare_authority.py manifest for provenance validation")
-    parser.add_argument("--replace-source", action="store_true", help="Remove Authority nodes from source versions absent from the supplied manifest")
+    parser.add_argument("--replace-source", action="store_true", help="Remove older Authority versions only for eCFR titles in the supplied manifest")
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error("--batch-size must be positive")
@@ -49,13 +88,13 @@ def main() -> int:
     if args.manifest:
         with open(args.manifest, encoding="utf-8") as handle:
             manifest = json.load(handle)
-        expected = {str(source["sha256"]) for source in manifest.get("sources", [])}
-        actual = {str(row["sha256"]) for row in rows}
-        if not actual.issubset(expected):
-            raise SystemExit("authority record sha256 does not match the supplied manifest")
+        try:
+            source_scopes = _source_scopes(manifest, rows, require_complete=args.replace_source)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SystemExit(f'invalid authority manifest: {exc}') from exc
     else:
-        expected = set()
-    if args.replace_source and not expected:
+        source_scopes = []
+    if args.replace_source and not source_scopes:
         raise SystemExit("--replace-source requires --manifest with source hashes")
     for row in rows:
         _, title, section = row['authority_id'].split(':', 2)
@@ -81,10 +120,11 @@ def main() -> int:
         if args.replace_source:
             driver.execute_query(
                 "MATCH (a:Authority) "
-                "WHERE a.source_url IN $source_urls AND NOT a.sha256 IN $sha256s "
+                "WHERE any(source IN $source_scopes WHERE "
+                "a.authority_id STARTS WITH source.authority_prefix "
+                "AND NOT a.sha256 IN source.sha256s) "
                 "DETACH DELETE a",
-                source_urls=[str(source['source_url']) for source in manifest.get('sources', [])],
-                sha256s=list(expected),
+                source_scopes=source_scopes,
                 database_=args.database,
             )
         for start in range(0, len(rows), args.batch_size):

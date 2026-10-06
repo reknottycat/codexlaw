@@ -100,17 +100,23 @@ def answer_matches(*, answer: str, expected: str, answer_type: str) -> bool:
         return actual == target
     if not actual or not target:
         return False
-    if actual in target or target in actual:
+    if actual.strip(".!? ") in {"yes", "no"}:
+        return False
+    if actual == target:
         return True
     actual_tokens = set(re.findall(r"\w+", actual))
     target_tokens = set(re.findall(r"\w+", target))
     if not actual_tokens or not target_tokens:
         return False
     overlap = len(actual_tokens & target_tokens)
+    if overlap < 4:
+        return False
+    if actual in target or target in actual:
+        return True
     # Benchmarks often store a full contractual sentence as the reference while
     # the task requests the shortest supported span. Require a substantial,
     # non-trivial portion of the submitted answer to be grounded in that span.
-    return overlap >= 4 and overlap / len(actual_tokens) >= 0.8
+    return overlap / len(actual_tokens) >= 0.8
 
 
 def parse_decision(raw_response: str) -> BenchmarkDecision:

@@ -71,7 +71,7 @@ def main():
     health = json.loads(health_path.read_text(encoding='utf-8')) if health_path.exists() else {}
     graph_runs = [r for r in runs if r['retrieval_mode']=='vector_graph' and r['controls']]
     payload = dict(generated=datetime.now(timezone.utc).isoformat(), runs=runs,
-                   health=health, default=graph_runs[-1]['id'] if graph_runs else 'project-ab-20260903T085033Z')
+                   health=health, default=graph_runs[-1]['id'] if graph_runs else runs[-1]['id'] if runs else None)
     template = (ROOT / 'web/dashboard.html').read_text(encoding='utf-8')
     data = json.dumps(payload, ensure_ascii=False).replace('<', '\\u003c')
     output = ROOT / 'dist/legal-agent-ab.html'

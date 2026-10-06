@@ -11,6 +11,12 @@ python -m unittest discover -s tests -v
 
 Run the same command on Linux or macOS with `PYTHONPATH=src`.
 
+The deadline regression launches only bounded local Python fixtures; `psutil` is a runtime dependency used to stop descendants even when they start separate sessions. Install the declared dependencies in each runtime interpreter, including the isolated Lawgent environment. Timeout cleanup allows at most one additional second for terminated descendants to stop and two seconds to drain captured pipes. The offline dashboard script regressions also run when Node.js is available, without a browser or network service.
+
+Nested harness helpers share one owned POSIX process group, so the outer case can also stop them after an intermediate parent exits. Provider commands must remain foreground programs: deliberately daemonized external processes that escape both ancestry and the owned group require OS-level containment and are outside this helper's guarantee.
+
+Evidence-span scoring rejects bare Yes/No responses and requires at least four distinct shared word tokens for a partial span or overlap match. Exact reference matches may remain short. Existing saved result rows are not rewritten; explicitly rescore only when comparing under this corrected scorer. An empty dashboard build displays setup guidance and disables batch-only controls.
+
 ## Core acceptance checks
 
 Validate the Python sources and Compose file without starting services:
@@ -50,7 +56,7 @@ python scripts/ingest_neo4j.py data/processed/authority/authority.jsonl `
   --manifest data/processed/authority/manifest.json --replace-source
 ```
 
-`--replace-source` keeps the graph aligned with the supplied authority manifest by removing only older versions whose `source_url` belongs to that manifest. Keep the password in the environment or an ignored password file; passing it as a command-line argument can expose it in process listings or shell history.
+`--replace-source` keeps the graph aligned with the supplied authority manifest by removing older versions of the eCFR titles listed in that manifest, including versions with earlier dated download URLs. Other titles are preserved. Records must match the manifest's title, URL and source hash together; replacement additionally requires complete, non-duplicate records matching every source's declared record count. Truncated inputs fail before graph mutation. Keep the password in the environment or an ignored password file; passing it as a command-line argument can expose it in process listings or shell history.
 
 The hosted NVIDIA endpoint is allowlisted. If a private or self-hosted chat or embedding endpoint is intentional, set `NVIDIA_ALLOW_CUSTOM_ENDPOINT=true` and validate that the endpoint is trusted before providing a key. URLs containing userinfo, query strings, or fragments are rejected.
 

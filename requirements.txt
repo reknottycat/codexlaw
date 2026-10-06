@@ -2,3 +2,4 @@ neo4j>=5.0,<7
 anthropic>=0.101
 python-dotenv>=1.2
 numpy>=1.26,<3
+psutil>=5.9,<8
